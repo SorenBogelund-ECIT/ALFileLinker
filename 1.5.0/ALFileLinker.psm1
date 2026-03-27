@@ -122,7 +122,7 @@ function Get-ALFileLinkerDefaults {
         CentralFileLinkFolder      = if ($config['CentralFileLinkFolder'])      { $config['CentralFileLinkFolder'] }      else { '(not set)' }
         RepoDestinationParentFolder = if ($config['RepoDestinationParentFolder']) { $config['RepoDestinationParentFolder'] } else { '(not set)' }
         ConfigPath                 = $configPath
-    }
+    } | Format-List
 }
 
 # ── Private helpers ─────────────────────────────────────────────────────────
