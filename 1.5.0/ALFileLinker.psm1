@@ -719,6 +719,10 @@ function Clone-RepoWithFileLinks {
         [Parameter(Mandatory)]
         [string]$RepoUrl,
 
+        [Parameter(Mandatory)]
+        [ValidateScript({ $_ -eq [System.IO.Path]::GetFileName($_) })]
+        [string]$RepoDestinationSubFolder,
+
         [string]$RepoDestinationParentFolder,
 
         [string]$CentralFileLinkFolder,
@@ -736,6 +740,11 @@ function Clone-RepoWithFileLinks {
     $CentralFileLinkFolder = Resolve-ALFileLinkerDefault -Value $CentralFileLinkFolder -ConfigKey 'CentralFileLinkFolder' -ParameterName 'CentralFileLinkFolder'
 
     $destParent = (Resolve-Path -LiteralPath $RepoDestinationParentFolder).Path
+    $destSubFolder = Join-Path $destParent $RepoDestinationSubFolder
+
+    if (-not (Test-Path -LiteralPath $destSubFolder -PathType Container)) {
+        New-Item -ItemType Directory -Path $destSubFolder -Force | Out-Null
+    }
 
     if ([string]::IsNullOrWhiteSpace($RepoFolderName)) {
         $name = ($RepoUrl.TrimEnd('/') -split '/')[(-1)]
@@ -745,7 +754,7 @@ function Clone-RepoWithFileLinks {
         $RepoFolderName = $name
     }
 
-    $dest = Join-Path $destParent $RepoFolderName
+    $dest = Join-Path $destSubFolder $RepoFolderName
     if (Test-Path -LiteralPath $dest) {
         throw "Destination already exists: $dest"
     }
