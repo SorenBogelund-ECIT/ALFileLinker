@@ -212,11 +212,12 @@ function Set-ALFileLinks {
         [Parameter(Mandatory)]
         [string]$RepoPath,
 
-        [Parameter(Mandatory)]
         [string]$CentralFileLinkFolder,
 
         [string]$RepoGuidelinesRelPath = 'docs'
     )
+
+    $CentralFileLinkFolder = Resolve-ALFileLinkerDefault -Value $CentralFileLinkFolder -ConfigKey 'CentralFileLinkFolder' -ParameterName 'CentralFileLinkFolder'
 
     $resolvedPath = (Resolve-Path -LiteralPath $RepoPath).Path
     $centralDir = (Resolve-Path -LiteralPath $CentralFileLinkFolder).Path
@@ -622,7 +623,6 @@ function Set-ALFileLinksForRepos {
         [Parameter(Mandatory)]
         [string]$RootPath,
 
-        [Parameter(Mandatory)]
         [string]$CentralFileLinkFolder,
 
         [string]$RepoGuidelinesRelPath = 'docs',
@@ -634,6 +634,8 @@ function Set-ALFileLinksForRepos {
         [ValidateRange(-1, 1000)]
         [int]$Levels = 2
     )
+
+    $CentralFileLinkFolder = Resolve-ALFileLinkerDefault -Value $CentralFileLinkFolder -ConfigKey 'CentralFileLinkFolder' -ParameterName 'CentralFileLinkFolder'
 
     $root = (Resolve-Path -LiteralPath $RootPath).Path
     $centralDir = (Resolve-Path -LiteralPath $CentralFileLinkFolder).Path
@@ -717,10 +719,8 @@ function Clone-RepoWithFileLinks {
         [Parameter(Mandatory)]
         [string]$RepoUrl,
 
-        [Parameter(Mandatory)]
         [string]$RepoDestinationParentFolder,
 
-        [Parameter(Mandatory)]
         [string]$CentralFileLinkFolder,
 
         [string]$RepoFolderName,
@@ -731,6 +731,9 @@ function Clone-RepoWithFileLinks {
 
         [switch]$OpenInVSCode
     )
+
+    $RepoDestinationParentFolder = Resolve-ALFileLinkerDefault -Value $RepoDestinationParentFolder -ConfigKey 'RepoDestinationParentFolder' -ParameterName 'RepoDestinationParentFolder'
+    $CentralFileLinkFolder = Resolve-ALFileLinkerDefault -Value $CentralFileLinkFolder -ConfigKey 'CentralFileLinkFolder' -ParameterName 'CentralFileLinkFolder'
 
     $destParent = (Resolve-Path -LiteralPath $RepoDestinationParentFolder).Path
 
@@ -780,4 +783,4 @@ function Clone-RepoWithFileLinks {
     $result
 }
 
-Export-ModuleMember -Function Set-ALFileLinks, Set-ALFileLinksForRepos, Clone-RepoWithFileLinks
+Export-ModuleMember -Function Set-ALFileLinks, Set-ALFileLinksForRepos, Clone-RepoWithFileLinks, Set-ALFileLinkerDefaults, Get-ALFileLinkerDefaults
