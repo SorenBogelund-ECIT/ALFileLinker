@@ -420,9 +420,9 @@ function Set-ALFileLinks {
     # Link PS Scripts - mirror central subfolder structure into PS_Scripts/
     # Repo-specific config files: copy only if missing (no hardlink, no overwrite)
     $repoSpecificFiles = @(
-        'FindInternalOnlyGlobals/exclusions.json',
-        'LoadFieldsAudit/exclusions.json',
-        'ScanObjectVars/ScanObjectVars-breaking.json'
+        'FindInternalOnlyGlobals/Exclusions.json',
+        'LoadFieldsAudit/Exclusions.json',
+        'ScanObjectVars/Exclusions.json'
     )
     $psScriptsLinkedFiles = @()
     $psScriptsOutFolders = @()
