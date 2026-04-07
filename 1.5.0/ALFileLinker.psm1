@@ -584,22 +584,21 @@ function Set-ALFileLinks {
 # ALFileLinker post-checkout hook - re-creates hardlinks after branch switch
 # $1 = previous HEAD, $2 = new HEAD, $3 = 1 if branch checkout (0 if file checkout)
 if [ "$3" = "1" ]; then
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '
-        Import-Module ALFileLinker -ErrorAction SilentlyContinue
-        $repo = (git rev-parse --show-toplevel) -replace "/", "\"
-        $cfgPath = Join-Path $repo ".git\alfilelinker.json"
-        if (Test-Path -LiteralPath $cfgPath) {
-            $cfg = Get-Content -LiteralPath $cfgPath -Raw | ConvertFrom-Json
-            Set-ALFileLinks -RepoPath $repo -CentralFileLinkFolder $cfg.CentralFileLinkFolder -RepoGuidelinesRelPath $cfg.RepoGuidelinesRelPath
-            Write-Host "[ALFileLinker] File links restored after branch switch."
-        }
-    '
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Import-Module ALFileLinker -ErrorAction SilentlyContinue; \$repo = (git rev-parse --show-toplevel) -replace '/', '\\'; \$cfgPath = Join-Path \$repo '.git\\alfilelinker.json'; if (Test-Path -LiteralPath \$cfgPath) { \$cfg = Get-Content -LiteralPath \$cfgPath -Raw | ConvertFrom-Json; Set-ALFileLinks -RepoPath \$repo -CentralFileLinkFolder \$cfg.CentralFileLinkFolder -RepoGuidelinesRelPath \$cfg.RepoGuidelinesRelPath; Write-Host '[ALFileLinker] File links restored after branch switch.' }"
 fi
 '@
             # Write with LF line endings and no BOM so the #!/bin/sh shebang works on Windows
             $hookContent = $hookContent -replace "`r`n", "`n"
-            [System.IO.File]::WriteAllText($hookFile, $hookContent, [System.Text.UTF8Encoding]::new($false))
-            Write-Host "Installed post-checkout hook: $hookFile"
+
+            # Skip writing if content is already identical (avoids corrupting the file while sh is executing it)
+            $existingContent = $null
+            if (Test-Path -LiteralPath $hookFile) {
+                $existingContent = [System.IO.File]::ReadAllText($hookFile)
+            }
+            if ($existingContent -ne $hookContent) {
+                [System.IO.File]::WriteAllText($hookFile, $hookContent, [System.Text.UTF8Encoding]::new($false))
+                Write-Host "Installed post-checkout hook: $hookFile"
+            }
         }
 
         [pscustomobject]@{
