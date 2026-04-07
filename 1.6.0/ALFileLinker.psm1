@@ -418,6 +418,12 @@ function Set-ALFileLinks {
     }
 
     # Link PS Scripts - mirror central subfolder structure into PS_Scripts/
+    # Repo-specific config files: copy only if missing (no hardlink, no overwrite)
+    $repoSpecificFiles = @(
+        'FindInternalOnlyGlobals/exclusions.json',
+        'LoadFieldsAudit/exclusions.json',
+        'ScanObjectVars/ScanObjectVars-breaking.json'
+    )
     $psScriptsLinkedFiles = @()
     $psScriptsOutFolders = @()
     if ($psScriptSubDirs.Count -gt 0) {
@@ -439,17 +445,29 @@ function Set-ALFileLinks {
             foreach ($psFile in $centralFiles) {
                 $centralFile = $psFile.FullName
                 $linkedFile = Join-Path $scriptSubFolder $psFile.Name
+                $relKey = "$($subDir.Name)/$($psFile.Name)"
 
-                if (Test-Path -LiteralPath $linkedFile) {
-                    Remove-Item -LiteralPath $linkedFile -Force
-                }
+                if ($repoSpecificFiles -contains $relKey) {
+                    # Repo-specific file: copy only if it does not already exist
+                    if (-not (Test-Path -LiteralPath $linkedFile)) {
+                        Copy-Item -LiteralPath $centralFile -Destination $linkedFile -Force
+                        Write-Verbose "Seeded repo-specific config: $relKey"
+                    } else {
+                        Write-Verbose "Repo-specific config already exists, skipping: $relKey"
+                    }
+                } else {
+                    # Standard file: hardlink (or symlink fallback)
+                    if (Test-Path -LiteralPath $linkedFile) {
+                        Remove-Item -LiteralPath $linkedFile -Force
+                    }
 
-                try {
-                    New-Item -ItemType HardLink -Path $linkedFile -Target $centralFile -ErrorAction Stop | Out-Null
-                    $linkKind = 'HardLink'
-                } catch {
-                    New-Item -ItemType SymbolicLink -Path $linkedFile -Target $centralFile -ErrorAction Stop | Out-Null
-                    $linkKind = 'SymbolicLink'
+                    try {
+                        New-Item -ItemType HardLink -Path $linkedFile -Target $centralFile -ErrorAction Stop | Out-Null
+                        $linkKind = 'HardLink'
+                    } catch {
+                        New-Item -ItemType SymbolicLink -Path $linkedFile -Target $centralFile -ErrorAction Stop | Out-Null
+                        $linkKind = 'SymbolicLink'
+                    }
                 }
 
                 $psScriptsLinkedFiles += [pscustomobject]@{
@@ -499,6 +517,9 @@ function Set-ALFileLinks {
     }
 
     foreach ($linked in $psScriptsLinkedFiles) {
+        # Skip repo-specific config files - they should be committed
+        $psRelKey = ($linked.LinkedPath.Substring($psScriptsFolder.Length + 1) -replace '\\', '/')
+        if ($repoSpecificFiles -contains $psRelKey) { continue }
         $relPath = $linked.LinkedPath.Substring($repo.Length + 1) -replace '\\', '/'
         $toEnsure += $relPath
     }
@@ -542,8 +563,10 @@ function Set-ALFileLinks {
             }
         }
 
-        # Handle PS Script files
+        # Handle PS Script files (skip repo-specific config files)
         foreach ($linked in $psScriptsLinkedFiles) {
+            $psRelKey = ($linked.LinkedPath.Substring($psScriptsFolder.Length + 1) -replace '\\', '/')
+            if ($repoSpecificFiles -contains $psRelKey) { continue }
             $relPath = $linked.LinkedPath.Substring($repo.Length + 1) -replace '\\', '/'
             try {
                 $null = git ls-files --error-unmatch $relPath 2>&1
@@ -602,6 +625,8 @@ fi
             }
         }
 
+        $gitStatus = try { git status --porcelain 2>&1 } catch { $null }
+
         [pscustomobject]@{
             RepoPath         = $repo
             TargetBase       = $targetBase
@@ -611,7 +636,7 @@ fi
             PSScriptFiles    = ($psScriptsLinkedFiles.Name -join ', ')
             PSScriptCount    = $psScriptsLinkedFiles.Count
             CentralFolder    = $centralDir
-            GitStatus        = (git status --porcelain)
+            GitStatus        = $gitStatus
         }
     }
     finally {
