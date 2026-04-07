@@ -306,28 +306,31 @@ function Set-ALFileLinks {
     # Check for .code-workspace file
     $workspaceFile = Get-ChildItem -LiteralPath $repo -Filter '*.code-workspace' -File | Select-Object -First 1
     $targetBase = $repo
+    $allAppJsonFolders = @()
 
     if ($null -ne $workspaceFile) {
         Write-Verbose "Found workspace file: $($workspaceFile.Name)"
         try {
             $workspaceConfig = Get-Content -LiteralPath $workspaceFile.FullName -Raw | ConvertFrom-Json
 
-            # Find first folder with app.json
-            $appJsonFolder = $null
+            # Find all workspace folders with app.json
             foreach ($folder in $workspaceConfig.folders) {
                 $folderPath = Join-Path $repo $folder.path
                 $appJsonPath = Join-Path $folderPath 'app.json'
 
                 if (Test-Path -LiteralPath $appJsonPath -PathType Leaf) {
-                    $appJsonFolder = $folderPath
-                    Write-Verbose "Found app.json in workspace folder: $folderPath"
-                    break
+                    $resolved = (Resolve-Path -LiteralPath $folderPath).Path
+                    $allAppJsonFolders += $resolved
+                    Write-Verbose "Found app.json in workspace folder: $resolved"
                 }
             }
 
-            if ($null -ne $appJsonFolder) {
-                $targetBase = (Resolve-Path -LiteralPath $appJsonFolder).Path
+            if ($allAppJsonFolders.Count -gt 0) {
+                $targetBase = $allAppJsonFolders[0]
                 Write-Host "Using workspace folder with app.json: $targetBase"
+                if ($allAppJsonFolders.Count -gt 1) {
+                    Write-Host "Found $($allAppJsonFolders.Count) app.json folder(s) - PS_Scripts will be linked to all"
+                }
             } else {
                 Write-Verbose "No app.json found in workspace folders, using repo root"
             }
@@ -336,19 +339,24 @@ function Set-ALFileLinks {
         }
     }
 
-    # Fallback: if targetBase is still repo root (no workspace file, or workspace
-    # file did not resolve to an app.json folder), scan for app.json in repo root
-    # and immediate subdirectories
-    if ($targetBase -eq $repo) {
+    # Fallback: if no app.json folders found yet, scan repo root and immediate subdirectories
+    if ($allAppJsonFolders.Count -eq 0) {
         $appJsonInRoot = Join-Path $repo 'app.json'
         if (Test-Path -LiteralPath $appJsonInRoot -PathType Leaf) {
-            Write-Verbose "app.json found in repo root, keeping targetBase as: $repo"
+            $allAppJsonFolders = @($repo)
+            Write-Verbose "app.json found in repo root"
         } else {
-            $appJsonSubDir = Get-ChildItem -LiteralPath $repo -Directory |
-                Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'app.json') -PathType Leaf } |
-                Select-Object -First 1
-            if ($null -ne $appJsonSubDir) {
-                $targetBase = $appJsonSubDir.FullName
+            $appJsonSubDirs = @(Get-ChildItem -LiteralPath $repo -Directory |
+                Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'app.json') -PathType Leaf })
+            if ($appJsonSubDirs.Count -gt 0) {
+                $allAppJsonFolders = @($appJsonSubDirs | ForEach-Object { $_.FullName })
+                Write-Verbose "Found $($allAppJsonFolders.Count) subfolder(s) with app.json"
+            }
+        }
+
+        if ($allAppJsonFolders.Count -gt 0) {
+            $targetBase = $allAppJsonFolders[0]
+            if ($targetBase -ne $repo) {
                 Write-Host "Found app.json in subfolder: $targetBase"
             }
         }
@@ -427,69 +435,75 @@ function Set-ALFileLinks {
     $psScriptsLinkedFiles = @()
     $psScriptsOutFolders = @()
     if ($psScriptSubDirs.Count -gt 0) {
-        $psScriptsFolder = Join-Path $targetBase 'PS_Scripts'
-        New-Item -ItemType Directory -Path $psScriptsFolder -Force | Out-Null
+        $psTargetFolders = if ($allAppJsonFolders.Count -gt 0) { $allAppJsonFolders } else { @($targetBase) }
 
-        # Clean up old flat files from previous module versions
-        $existingPsFiles = Get-ChildItem -LiteralPath $psScriptsFolder -File -ErrorAction SilentlyContinue
-        foreach ($oldFile in $existingPsFiles) {
-            Remove-Item -LiteralPath $oldFile.FullName -Force -ErrorAction SilentlyContinue
-        }
+        foreach ($psTargetBase in $psTargetFolders) {
+            $psScriptsFolder = Join-Path $psTargetBase 'PS_Scripts'
+            New-Item -ItemType Directory -Path $psScriptsFolder -Force | Out-Null
 
-        foreach ($subDir in $psScriptSubDirs) {
-            $scriptSubFolder = Join-Path $psScriptsFolder $subDir.Name
-            New-Item -ItemType Directory -Path $scriptSubFolder -Force | Out-Null
+            # Clean up old flat files from previous module versions
+            $existingPsFiles = Get-ChildItem -LiteralPath $psScriptsFolder -File -ErrorAction SilentlyContinue
+            foreach ($oldFile in $existingPsFiles) {
+                Remove-Item -LiteralPath $oldFile.FullName -Force -ErrorAction SilentlyContinue
+            }
 
-            # Link all files in this subfolder
-            $centralFiles = @(Get-ChildItem -LiteralPath $subDir.FullName -File)
-            foreach ($psFile in $centralFiles) {
-                $centralFile = $psFile.FullName
-                $linkedFile = Join-Path $scriptSubFolder $psFile.Name
-                $relKey = "$($subDir.Name)/$($psFile.Name)"
+            foreach ($subDir in $psScriptSubDirs) {
+                $scriptSubFolder = Join-Path $psScriptsFolder $subDir.Name
+                New-Item -ItemType Directory -Path $scriptSubFolder -Force | Out-Null
 
-                if ($repoSpecificFiles -contains $relKey) {
-                    # Repo-specific file: copy only if it does not already exist
-                    if (-not (Test-Path -LiteralPath $linkedFile)) {
-                        Copy-Item -LiteralPath $centralFile -Destination $linkedFile -Force
-                        Write-Verbose "Seeded repo-specific config: $relKey"
+                # Link all files in this subfolder
+                $centralFiles = @(Get-ChildItem -LiteralPath $subDir.FullName -File)
+                foreach ($psFile in $centralFiles) {
+                    $centralFile = $psFile.FullName
+                    $linkedFile = Join-Path $scriptSubFolder $psFile.Name
+                    $relKey = "$($subDir.Name)/$($psFile.Name)"
+
+                    if ($repoSpecificFiles -contains $relKey) {
+                        # Repo-specific file: copy only if it does not already exist
+                        if (-not (Test-Path -LiteralPath $linkedFile)) {
+                            Copy-Item -LiteralPath $centralFile -Destination $linkedFile -Force
+                            Write-Verbose "Seeded repo-specific config: $relKey -> $psTargetBase"
+                        } else {
+                            Write-Verbose "Repo-specific config already exists, skipping: $relKey in $psTargetBase"
+                        }
                     } else {
-                        Write-Verbose "Repo-specific config already exists, skipping: $relKey"
-                    }
-                } else {
-                    # Standard file: hardlink (or symlink fallback)
-                    if (Test-Path -LiteralPath $linkedFile) {
-                        Remove-Item -LiteralPath $linkedFile -Force
+                        # Standard file: hardlink (or symlink fallback)
+                        if (Test-Path -LiteralPath $linkedFile) {
+                            Remove-Item -LiteralPath $linkedFile -Force
+                        }
+
+                        try {
+                            New-Item -ItemType HardLink -Path $linkedFile -Target $centralFile -ErrorAction Stop | Out-Null
+                            $linkKind = 'HardLink'
+                        } catch {
+                            New-Item -ItemType SymbolicLink -Path $linkedFile -Target $centralFile -ErrorAction Stop | Out-Null
+                            $linkKind = 'SymbolicLink'
+                        }
                     }
 
-                    try {
-                        New-Item -ItemType HardLink -Path $linkedFile -Target $centralFile -ErrorAction Stop | Out-Null
-                        $linkKind = 'HardLink'
-                    } catch {
-                        New-Item -ItemType SymbolicLink -Path $linkedFile -Target $centralFile -ErrorAction Stop | Out-Null
-                        $linkKind = 'SymbolicLink'
+                    $psScriptsLinkedFiles += [pscustomobject]@{
+                        CentralPath = $centralFile
+                        LinkedPath  = $linkedFile
+                        Name        = $psFile.Name
+                        RelKey      = $relKey
                     }
                 }
 
-                $psScriptsLinkedFiles += [pscustomobject]@{
-                    CentralPath = $centralFile
-                    LinkedPath  = $linkedFile
-                    Name        = $psFile.Name
+                # Detect if any script produces output files -> create out/
+                $ps1Files = @($centralFiles | Where-Object { $_.Extension -eq '.ps1' })
+                foreach ($ps1File in $ps1Files) {
+                    $scriptContent = Get-Content -LiteralPath $ps1File.FullName -Raw
+                    if ($scriptContent -match '\$[Oo]ut(File|Dir|put)|\bOut-File\b') {
+                        $outFolder = Join-Path $scriptSubFolder 'out'
+                        New-Item -ItemType Directory -Path $outFolder -Force | Out-Null
+                        $psScriptsOutFolders += $outFolder
+                        break
+                    }
                 }
             }
-
-            # Detect if any script produces output files -> create out/
-            $ps1Files = @($centralFiles | Where-Object { $_.Extension -eq '.ps1' })
-            foreach ($ps1File in $ps1Files) {
-                $scriptContent = Get-Content -LiteralPath $ps1File.FullName -Raw
-                if ($scriptContent -match '\$[Oo]ut(File|Dir|put)|\bOut-File\b') {
-                    $outFolder = Join-Path $scriptSubFolder 'out'
-                    New-Item -ItemType Directory -Path $outFolder -Force | Out-Null
-                    $psScriptsOutFolders += $outFolder
-                    break
-                }
-            }
+            Write-Host "Linked PS Script file(s) to: $psScriptsFolder (mirroring $($psScriptSubDirs.Count) subfolders)"
         }
-        Write-Host "Linked $($psScriptsLinkedFiles.Count) PS Script file(s) to: $psScriptsFolder (mirroring $($psScriptSubDirs.Count) subfolders)"
+        Write-Host "Total: $($psScriptsLinkedFiles.Count) PS Script file(s) across $($psTargetFolders.Count) target folder(s)"
     }
 
     # Update .git/info/exclude
@@ -518,8 +532,7 @@ function Set-ALFileLinks {
 
     foreach ($linked in $psScriptsLinkedFiles) {
         # Skip repo-specific config files - they should be committed
-        $psRelKey = ($linked.LinkedPath.Substring($psScriptsFolder.Length + 1) -replace '\\', '/')
-        if ($repoSpecificFiles -contains $psRelKey) { continue }
+        if ($repoSpecificFiles -contains $linked.RelKey) { continue }
         $relPath = $linked.LinkedPath.Substring($repo.Length + 1) -replace '\\', '/'
         $toEnsure += $relPath
     }
@@ -565,8 +578,7 @@ function Set-ALFileLinks {
 
         # Handle PS Script files (skip repo-specific config files)
         foreach ($linked in $psScriptsLinkedFiles) {
-            $psRelKey = ($linked.LinkedPath.Substring($psScriptsFolder.Length + 1) -replace '\\', '/')
-            if ($repoSpecificFiles -contains $psRelKey) { continue }
+            if ($repoSpecificFiles -contains $linked.RelKey) { continue }
             $relPath = $linked.LinkedPath.Substring($repo.Length + 1) -replace '\\', '/'
             try {
                 $null = git ls-files --error-unmatch $relPath 2>&1
@@ -630,6 +642,7 @@ fi
         [pscustomobject]@{
             RepoPath         = $repo
             TargetBase       = $targetBase
+            AppJsonFolders   = $allAppJsonFolders
             LinkType         = $linkKind
             GuidelineFiles   = ($linkedFiles.Name -join ', ')
             GuidelineCount   = $linkedFiles.Count
