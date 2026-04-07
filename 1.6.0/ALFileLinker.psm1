@@ -655,7 +655,7 @@ function Set-ALFileLinksForRepos {
 
         [string]$RepoNameLike = '*',
 
-        [switch]$RequireAppJson,
+        [switch]$IncludeNonALRepos,
 
         [ValidateRange(-1, 1000)]
         [int]$Levels = 2
@@ -681,8 +681,19 @@ function Set-ALFileLinksForRepos {
 
         if ((Split-Path -Leaf $current) -like $RepoNameLike) {
             if (Test-Path -LiteralPath (Join-Path $current '.git')) {
-                if (-not $RequireAppJson -or (Test-Path -LiteralPath (Join-Path $current 'app.json') -PathType Leaf)) {
+                if ($IncludeNonALRepos) {
                     $repos.Add($current) | Out-Null
+                } else {
+                    # Check for app.json in root or immediate subdirectories
+                    $hasAppJson = (Test-Path -LiteralPath (Join-Path $current 'app.json') -PathType Leaf)
+                    if (-not $hasAppJson) {
+                        $hasAppJson = $null -ne (Get-ChildItem -LiteralPath $current -Directory -ErrorAction SilentlyContinue |
+                            Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'app.json') -PathType Leaf } |
+                            Select-Object -First 1)
+                    }
+                    if ($hasAppJson) {
+                        $repos.Add($current) | Out-Null
+                    }
                 }
             }
         }
