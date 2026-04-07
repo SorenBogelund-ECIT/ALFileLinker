@@ -477,13 +477,14 @@ function Set-ALFileLinks {
     # Update .git/info/exclude
     $excludeFile = Join-Path $repo '.git\info\exclude'
     if (-not (Test-Path -LiteralPath $excludeFile)) {
-        throw "Not a git repo (missing $excludeFile)"
+        $infoDir = Split-Path $excludeFile -Parent
+        if (-not (Test-Path -LiteralPath $infoDir)) {
+            New-Item -ItemType Directory -Path $infoDir -Force | Out-Null
+        }
+        New-Item -ItemType File -Path $excludeFile -Force | Out-Null
     }
 
-    $excludeLines = @()
-    if (Test-Path -LiteralPath $excludeFile) {
-        $excludeLines = Get-Content -LiteralPath $excludeFile -ErrorAction SilentlyContinue
-    }
+    $excludeLines = @(Get-Content -LiteralPath $excludeFile -ErrorAction SilentlyContinue)
 
     # Build list of files to exclude (relative to repo root)
     $toEnsure = @('# Local-only files (do not commit)')
