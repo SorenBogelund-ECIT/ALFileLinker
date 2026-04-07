@@ -621,7 +621,6 @@ fi
 function Set-ALFileLinksForRepos {
     [CmdletBinding(SupportsShouldProcess)]
     param(
-        [Parameter(Mandatory)]
         [string]$RootPath,
 
         [string]$CentralFileLinkFolder,
@@ -636,6 +635,7 @@ function Set-ALFileLinksForRepos {
         [int]$Levels = 2
     )
 
+    $RootPath = Resolve-ALFileLinkerDefault -Value $RootPath -ConfigKey 'RepoDestinationParentFolder' -ParameterName 'RootPath'
     $CentralFileLinkFolder = Resolve-ALFileLinkerDefault -Value $CentralFileLinkFolder -ConfigKey 'CentralFileLinkFolder' -ParameterName 'CentralFileLinkFolder'
 
     $root = (Resolve-Path -LiteralPath $RootPath).Path
