@@ -485,11 +485,8 @@ function Set-ALFileLinks {
 
     # Link PS Scripts - mirror central subfolder structure into PS_Scripts/
     # Repo-specific config files: copy only if missing (no hardlink, no overwrite)
-    $repoSpecificFiles = @(
-        'FindInternalOnlyGlobals/Exclusions.json',
-        'LoadFieldsAudit/Exclusions.json',
-        'ScanObjectVars/Exclusions.json'
-    )
+    # Any file named Exclusions.json is repo-specific by convention.
+    $repoSpecificFileNames = @('Exclusions.json')
     $psScriptsLinkedFiles = @()
     $psScriptsOutFolders = @()
     if ($psScriptSubDirs.Count -gt 0) {
@@ -516,13 +513,22 @@ function Set-ALFileLinks {
                     $linkedFile = Join-Path $scriptSubFolder $psFile.Name
                     $relKey = "$($subDir.Name)/$($psFile.Name)"
 
-                    if ($repoSpecificFiles -contains $relKey) {
+                    if ($repoSpecificFileNames -contains $psFile.Name) {
                         # Repo-specific file: copy only if it does not already exist
                         if (-not (Test-Path -LiteralPath $linkedFile)) {
                             Copy-Item -LiteralPath $centralFile -Destination $linkedFile -Force
                             Write-Verbose "Seeded repo-specific config: $relKey -> $psTargetBase"
                         } else {
-                            Write-Verbose "Repo-specific config already exists, skipping: $relKey in $psTargetBase"
+                            # Break hardlink if the existing file is still linked to the central file
+                            $existingLinks = @(fsutil hardlink list $linkedFile 2>$null)
+                            if ($existingLinks.Count -gt 1) {
+                                $content = Get-Content -LiteralPath $linkedFile -Raw
+                                Remove-Item -LiteralPath $linkedFile -Force
+                                Set-Content -LiteralPath $linkedFile -Value $content -NoNewline
+                                Write-Verbose "Broke hardlink on repo-specific config: $relKey in $psTargetBase"
+                            } else {
+                                Write-Verbose "Repo-specific config already exists, skipping: $relKey in $psTargetBase"
+                            }
                         }
                     } else {
                         # Standard file: hardlink (or symlink fallback)
@@ -762,7 +768,7 @@ function Set-ALFileLinksForRepos {
     $results
 }
 
-function Clone-RepoWithFileLinks {
+function Copy-RepoWithFileLinks {
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)]
@@ -841,4 +847,4 @@ function Clone-RepoWithFileLinks {
     $result
 }
 
-Export-ModuleMember -Function Set-ALFileLinks, Set-ALFileLinksForRepos, Clone-RepoWithFileLinks, Set-ALFileLinkerDefaults, Get-ALFileLinkerDefaults
+Export-ModuleMember -Function Set-ALFileLinks, Set-ALFileLinksForRepos, Copy-RepoWithFileLinks, Set-ALFileLinkerDefaults, Get-ALFileLinkerDefaults

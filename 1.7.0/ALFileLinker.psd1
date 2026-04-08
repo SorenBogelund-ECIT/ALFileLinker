@@ -7,7 +7,7 @@
     Copyright = ''
     Description = 'Links central AL coding guidelines and PS scripts into repos (hardlink/symlink).'
     PowerShellVersion = '5.1'
-    FunctionsToExport = @('Set-ALFileLinks','Set-ALFileLinksForRepos','Clone-RepoWithFileLinks','Set-ALFileLinkerDefaults','Get-ALFileLinkerDefaults')
+    FunctionsToExport = @('Set-ALFileLinks','Set-ALFileLinksForRepos','Copy-RepoWithFileLinks','Set-ALFileLinkerDefaults','Get-ALFileLinkerDefaults')
     CmdletsToExport = @()
     VariablesToExport = '*'
     AliasesToExport = @()
