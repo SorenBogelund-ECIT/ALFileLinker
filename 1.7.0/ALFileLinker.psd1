@@ -14,7 +14,7 @@
     PrivateData = @{
         PSData = @{
             Tags = @('AL','BusinessCentral','Guidelines','Git')
-            ReleaseNotes = 'Removed .git/info/exclude management. Set-ALFileLinks now cleans up old ALFileLinker entries from .git/info/exclude.'
+            ReleaseNotes = 'Removed .git/info/exclude management. Set-ALFileLinks now cleans up old ALFileLinker entries from .git/info/exclude and automatically stages linked files for git tracking.'
         }
     }
 }
