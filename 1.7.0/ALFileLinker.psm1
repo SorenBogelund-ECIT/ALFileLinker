@@ -573,6 +573,8 @@ function Set-ALFileLinks {
     # Ensure PS_Scripts out/ folders are listed in .gitignore (one per app.json folder)
     if ($psScriptsOutFolders.Count -gt 0) {
         $gitignoreFolders = $psScriptsOutFolders | ForEach-Object { Split-Path (Split-Path (Split-Path $_)) } | Select-Object -Unique
+        $ignoreEntry = 'PS_Scripts/*/out/'
+        $keepEntry   = '!PS_Scripts/*/out/.gitkeep'
         foreach ($appFolder in $gitignoreFolders) {
             $gitignoreFile = Join-Path $appFolder '.gitignore'
             $existingLines = @()
@@ -580,28 +582,16 @@ function Set-ALFileLinks {
                 $existingLines = @(Get-Content -LiteralPath $gitignoreFile)
             }
 
-            # Collect out/ entries relative to the app folder
-            $outEntries = @($psScriptsOutFolders | Where-Object { $_.StartsWith($appFolder, [System.StringComparison]::OrdinalIgnoreCase) } | ForEach-Object {
-                $_.Substring($appFolder.Length + 1) -replace '\\', '/'
-            } | Sort-Object -Unique)
-
-            $newEntries = @()
-            foreach ($entry in $outEntries) {
-                $entryWithSlash = "$entry/"
-                if ($existingLines -notcontains $entry -and $existingLines -notcontains $entryWithSlash) {
-                    $newEntries += $entryWithSlash
-                }
-            }
-
-            if ($newEntries.Count -gt 0) {
+            if ($existingLines -notcontains $ignoreEntry) {
                 $linesToAdd = @()
                 if ($existingLines.Count -gt 0 -and $existingLines[-1] -ne '') {
                     $linesToAdd += ''
                 }
                 $linesToAdd += '# PS_Scripts output folders (managed by ALFileLinker)'
-                $linesToAdd += $newEntries
+                $linesToAdd += $ignoreEntry
+                $linesToAdd += $keepEntry
                 Add-Content -LiteralPath $gitignoreFile -Value ($linesToAdd -join "`n")
-                Write-Host "Added $($newEntries.Count) out/ entry/entries to: $gitignoreFile"
+                Write-Host "Added PS_Scripts out/ ignore rules to: $gitignoreFile"
             }
         }
     }
