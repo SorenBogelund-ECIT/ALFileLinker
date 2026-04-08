@@ -127,6 +127,61 @@ function Get-ALFileLinkerDefaults {
 
 # ── Private helpers ─────────────────────────────────────────────────────────
 
+function Remove-ALFileLinkerExcludes {
+    <#
+    .SYNOPSIS
+        Removes entries from .git/info/exclude that were previously added by
+        ALFileLinker 1.6.0 and earlier. Leaves all other entries intact.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$RepoPath
+    )
+
+    $excludeFile = Join-Path $RepoPath '.git\info\exclude'
+    if (-not (Test-Path -LiteralPath $excludeFile -PathType Leaf)) {
+        return
+    }
+
+    $lines = @(Get-Content -LiteralPath $excludeFile)
+    if ($lines.Count -eq 0) { return }
+
+    # Patterns that identify lines added by ALFileLinker
+    $alFileLinkerPatterns = @(
+        '^# Local-only files \(do not commit\)$',
+        'copilot-instructions\.md$',
+        'docs/GUIDELINES/',
+        'docs/CODING_GUIDELINES',
+        'docs/ECIT',
+        'Copilot_Instructions/',
+        'PS_Scripts/'
+    )
+
+    $cleanedLines = @($lines | Where-Object {
+        $line = $_
+        $isALFileLinkerEntry = $false
+        foreach ($pattern in $alFileLinkerPatterns) {
+            if ($line -match $pattern) {
+                $isALFileLinkerEntry = $true
+                break
+            }
+        }
+        -not $isALFileLinkerEntry
+    })
+
+    # Trim trailing empty lines
+    while ($cleanedLines.Count -gt 0 -and [string]::IsNullOrWhiteSpace($cleanedLines[-1])) {
+        $cleanedLines = $cleanedLines[0..($cleanedLines.Count - 2)]
+    }
+
+    $removedCount = $lines.Count - $cleanedLines.Count
+    if ($removedCount -gt 0) {
+        Set-Content -LiteralPath $excludeFile -Value $cleanedLines -Encoding UTF8
+        Write-Host "Cleaned $removedCount old ALFileLinker entries from: $excludeFile" -ForegroundColor Yellow
+    }
+}
+
 function Resolve-CentralSubfolder {
     <#
     .SYNOPSIS
@@ -266,6 +321,9 @@ function Set-ALFileLinks {
             Write-Host "Using repository: $repo"
         }
     }
+
+    # Clean up old ALFileLinker entries from .git/info/exclude (from v1.6.0 and earlier)
+    Remove-ALFileLinkerExcludes -RepoPath $repo
 
     # Resolve subfolder paths - prompt user if defaults are missing
     $codingGuidelinesDir = Resolve-CentralSubfolder `
