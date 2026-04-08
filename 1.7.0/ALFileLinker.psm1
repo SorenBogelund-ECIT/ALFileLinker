@@ -613,6 +613,28 @@ fi
             }
         }
 
+        # Stage all linked files so they are tracked by git
+        $allLinkedPaths = @()
+        foreach ($f in $linkedFiles) { $allLinkedPaths += $f.LinkedPath }
+        $allLinkedPaths += $instructions
+        foreach ($f in $psScriptsLinkedFiles) { $allLinkedPaths += $f.LinkedPath }
+        foreach ($outDir in $psScriptsOutFolders) { $allLinkedPaths += $outDir }
+
+        if ($allLinkedPaths.Count -gt 0) {
+            $relativePaths = @($allLinkedPaths | ForEach-Object {
+                $resolved = if (Test-Path -LiteralPath $_) { (Resolve-Path -LiteralPath $_).Path } else { $_ }
+                $resolved.Substring($repo.Length + 1) -replace '\\', '/'
+            })
+            $addedCount = 0
+            foreach ($relPath in $relativePaths) {
+                $null = git add -- $relPath 2>&1
+                if ($LASTEXITCODE -eq 0) { $addedCount++ }
+            }
+            if ($addedCount -gt 0) {
+                Write-Host "Staged $addedCount linked file(s)/folder(s) for git tracking." -ForegroundColor Green
+            }
+        }
+
         $gitStatus = try { git status --porcelain 2>&1 } catch { $null }
 
         [pscustomobject]@{
